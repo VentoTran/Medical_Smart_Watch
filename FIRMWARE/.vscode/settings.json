@@ -1,0 +1,13 @@
+{
+    "files.associations": {
+        "esp_log.h": "c",
+        "task.h": "c",
+        "gpio.h": "c",
+        "stdlib.h": "c",
+        "freertos.h": "c",
+        "portmacro.h": "c",
+        "i2c.h": "c",
+        "stdio.h": "c",
+        "max30102.h": "c"
+    }
+}
