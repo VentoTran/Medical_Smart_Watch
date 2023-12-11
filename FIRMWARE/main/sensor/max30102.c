@@ -20,10 +20,53 @@ extern "C"
  */
 void max30102_plot(uint32_t ir_sample, uint32_t red_sample)
 {
-    
+    // ESP_LOGI("Sensor", " %ld|%ld ", ir_sample, red_sample);
+    printf("%ld|%ld\n", ir_sample, red_sample);
 }
 
 //===================================================================================================================================
+
+/**
+ * @brief 
+ * 
+ * @param data_rd 
+ * @param size 
+ * @return esp_err_t 
+ */
+static esp_err_t i2c_sensor_read(max30102_t *obj, uint8_t *data_rd, size_t size)
+{
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (MAX30102_I2C_ADDR << 1) | I2C_MASTER_READ, ACK_CHECK_EN);
+    if (size > 1)
+    {
+        i2c_master_read(cmd, data_rd, size - 1, ACK_VAL);
+    }
+    i2c_master_read_byte(cmd, data_rd + size - 1, NACK_VAL);
+    i2c_master_stop(cmd);
+    esp_err_t ret = i2c_master_cmd_begin(obj->_i2c_port, cmd, 1000 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+    return ret;
+}
+
+/**
+ * @brief 
+ * 
+ * @param data_wr 
+ * @param size 
+ * @return esp_err_t 
+ */
+static esp_err_t i2c_sensor_write(max30102_t *obj, uint8_t *data_wr, size_t size)
+{
+    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+    i2c_master_start(cmd);
+    i2c_master_write_byte(cmd, (MAX30102_I2C_ADDR << 1) | I2C_MASTER_WRITE, ACK_CHECK_EN);
+    i2c_master_write(cmd, data_wr, size, ACK_CHECK_EN);
+    i2c_master_stop(cmd);
+    esp_err_t ret = i2c_master_cmd_begin(obj->_i2c_port, cmd, 1000 / portTICK_PERIOD_MS);
+    i2c_cmd_link_delete(cmd);
+    return ret;
+}
 
 /**
  * @brief 
@@ -32,11 +75,41 @@ void max30102_plot(uint32_t ir_sample, uint32_t red_sample)
  */
 void max30102_process(max30102_t *obj)
 {
-    filter_n(obj->_ir_ready, obj->_red_ready, 5U);
-    remove_dc_part(obj->_ir_ready, obj->_red_ready, &obj->_ir_mean, &obj->_red_mean);
-    remove_trend_line(obj->_ir_ready);
-    remove_trend_line(obj->_red_ready);
-    obj->pearson_correlation = correlation_datay_datax(obj->_red_ready, obj->_ir_ready);
+// #if PLOT_FINE == 1
+//     for (uint8_t i = 0; i < MAX30102_SAMPLE_LEN_MAX; i++)
+//     {
+//         // ESP_LOGI("Sensor", " %ld|%ld ", obj->_ir_ready[i], obj->_red_ready[i]);
+//         printf("%ld|%ld\n", obj->_ir_ready[i], obj->_red_ready[i]);
+//     }
+// #endif
+
+    filter_n((int32_t*)obj->_ir_ready, (int32_t*)obj->_red_ready, 5U);
+    remove_dc_part((int32_t*)obj->_ir_ready, (int32_t*)obj->_red_ready, &obj->_ir_mean, &obj->_red_mean);
+#if SHOW_ALL == 1
+    ESP_LOGI("PROCESS", "red_mean = %lld", obj->_red_mean);
+	ESP_LOGI("PROCESS", "ir_mean = %lld", obj->_ir_mean);
+#endif
+    // remove_trend_line((int32_t*)obj->_ir_ready);
+    // remove_trend_line((int32_t*)obj->_red_ready);
+    obj->pearson_correlation = correlation_datay_datax((int32_t*)obj->_red_ready, (int32_t*)obj->_ir_ready);
+
+    ESP_LOGI("PROCESS", "pearson_correlation = %2.3f", obj->pearson_correlation);
+
+    if (obj->_ir_mean <= 200000)
+    {
+        ESP_LOGI("Sensor", "Unmount -> Nothing to Process");
+        obj->HeartRate = 0;
+        obj->SpO2 = 0.0;
+        obj->status_flag = max30102_gather_data;
+    }
+
+#if PLOT_FINE == 1
+    for (uint8_t i = 0; i < MAX30102_SAMPLE_LEN_MAX; i++)
+    {
+        // ESP_LOGI("Sensor", " %ld|%ld ", obj->_ir_ready[i], obj->_red_ready[i]);
+        printf("%ld|%ld\n", obj->_ir_ready[i], obj->_red_ready[i]);
+    }
+#endif
 }
 
 /**
@@ -46,7 +119,18 @@ void max30102_process(max30102_t *obj)
  */
 void max30102_get_heart_rate(max30102_t *obj)
 {
+    uint8_t temp = calculate_heart_rate((int32_t*)obj->_ir_ready, &obj->_r0_autocorrelation, obj->_auto_correlationated_data);
 
+    if (temp >= 50 && temp <= 180)
+    {
+        obj->HeartRate = temp;
+        ESP_LOGI("Sensor", "Heart Rate = %d", obj->HeartRate);
+    }
+    else
+    {
+        obj->HeartRate = 0;
+        ESP_LOGI("Sensor", "Invalid HR -> Calculation Fail!");
+    }
 }
 
 /**
@@ -56,7 +140,18 @@ void max30102_get_heart_rate(max30102_t *obj)
  */
 void max30102_get_spo2(max30102_t *obj)
 {
+    double temp = spo2_measurement((int32_t*)obj->_ir_ready, (int32_t*)obj->_red_ready, obj->_ir_mean, obj->_red_mean);
 
+    if (temp >= 90.0 && temp <= 100.0)
+    {
+        obj->SpO2 = temp;
+        ESP_LOGI("Sensor", "SpO2 = %2.1f", obj->SpO2);
+    }
+    else
+    {
+        obj->SpO2 = 0.0;
+        ESP_LOGI("Sensor", "Invalid SpO2 -> Calculation Fail!");
+    }
 }
 
 //===================================================================================================================================
@@ -104,7 +199,11 @@ void max30102_init(max30102_t *obj, int i2c_port, int sda, int scl, int speed)
  */
 void max30102_write(max30102_t *obj, uint8_t reg, uint8_t *buf, uint16_t buflen)
 {
-
+    if (buflen >= 20)    return;
+    uint8_t data[21] = {0};
+	data[0] = reg;
+	memcpy(&data[1], buf, buflen * sizeof(uint8_t));
+	i2c_sensor_write(obj, data, buflen+1);
 }
 
 /**
@@ -117,7 +216,8 @@ void max30102_write(max30102_t *obj, uint8_t reg, uint8_t *buf, uint16_t buflen)
  */
 void max30102_read(max30102_t *obj, uint8_t reg, uint8_t *buf, uint16_t buflen)
 {
-
+    i2c_sensor_write(obj, &reg, 1);
+	i2c_sensor_read(obj, buf, buflen);
 }
 
 /**
@@ -414,9 +514,9 @@ void max30102_set_fifo_config(max30102_t *obj, max30102_smp_ave_t smp_ave, uint8
 void max30102_clear_fifo(max30102_t *obj)
 {
     uint8_t val = 0x00;
-    max30102_write(obj, MAX30102_FIFO_WR_PTR, &val, 3);
-    max30102_write(obj, MAX30102_FIFO_RD_PTR, &val, 3);
-    max30102_write(obj, MAX30102_OVF_COUNTER, &val, 3);
+    max30102_write(obj, MAX30102_FIFO_WR_PTR, &val, 1);
+    max30102_write(obj, MAX30102_FIFO_RD_PTR, &val, 1);
+    max30102_write(obj, MAX30102_OVF_COUNTER, &val, 1);
 }
 
 /**
@@ -439,21 +539,33 @@ void max30102_read_fifo(max30102_t *obj)
         num_samples += 32;
     }
 
-    memset(obj->_ir_samples, '\0', sizeof(obj->_ir_samples));
-    memset(obj->_red_samples, '\0', sizeof(obj->_red_samples));
+#if SHOW_NUM_SAMPLE == 1
+    ESP_LOGI("Sensor", "Got %d samples", num_samples);
+#endif
 
     // Second transaction: Read NUM_SAMPLES_TO_READ samples from the FIFO
-    for (int8_t i = 0; i < num_samples; i++)
+    for (uint8_t i = 0; i < num_samples; i++)
     {
         uint8_t sample[6] = {0};
         max30102_read(obj, MAX30102_FIFO_DATA, sample, 6);
         uint32_t ir_sample = ((uint32_t)(sample[0] << 16) | (uint32_t)(sample[1] << 8) | (uint32_t)(sample[2])) & 0x3ffff;
         uint32_t red_sample = ((uint32_t)(sample[3] << 16) | (uint32_t)(sample[4] << 8) | (uint32_t)(sample[5])) & 0x3ffff;
 
-        obj->_ir_samples[i] = ir_sample;
-        obj->_red_samples[i] = red_sample;
+        obj->_ir_samples[obj->_sample_index] = ir_sample;
+        obj->_red_samples[obj->_sample_index] = red_sample;
 
+        obj->_sample_index++;
+        if (obj->_sample_index >= MAX30102_SAMPLE_LEN_MAX)
+        {
+            obj->_sample_index = 0;
+            obj->status_flag = max30102_data_ready;
+            memcpy(obj->_ir_ready, obj->_ir_samples, MAX30102_SAMPLE_LEN_MAX * sizeof(int32_t));
+            memcpy(obj->_red_ready, obj->_red_samples, MAX30102_SAMPLE_LEN_MAX * sizeof(int32_t));
+        }
+
+#if PLOT_RAW == 1
         max30102_plot(ir_sample, red_sample);
+#endif
     }
 }
 

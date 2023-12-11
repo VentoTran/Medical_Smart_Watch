@@ -8,6 +8,7 @@
         "portmacro.h": "c",
         "i2c.h": "c",
         "stdio.h": "c",
-        "max30102.h": "c"
+        "max30102.h": "c",
+        "algorithm.h": "c"
     }
 }

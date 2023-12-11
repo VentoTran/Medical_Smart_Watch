@@ -1,12 +1,12 @@
 /**
  * @file max30102.h
  * @author Vento (zseefvhu12345@gmail.com)
- * @brief 
+ * @brief
  * @version 1.0
  * @date 2022-06-18
- * 
+ *
  * @copyright Copyright (c) 2022
- * 
+ *
  */
 
 #ifndef MAX30102_H
@@ -22,6 +22,14 @@
 
 #define MAX30102_I2C_ADDR 0x57
 #define MAX30102_I2C_TIMEOUT 1000
+
+#define ACK_CHECK_EN 0x1
+#define ACK_VAL 0x0
+#define NACK_VAL 0x1
+
+#define PLOT_RAW 0
+#define PLOT_FINE 0
+#define SHOW_NUM_SAMPLE 0
 
 #define MAX30102_BYTES_PER_SAMPLE 6
 #define MAX30102_SAMPLE_LEN_MAX BUFFER_SIZE
@@ -136,14 +144,14 @@ typedef struct max30102_t
 {
     uint8_t _i2c_port;
 
-    uint32_t _ir_samples[MAX30102_SAMPLE_LEN_MAX];
-    uint32_t _red_samples[MAX30102_SAMPLE_LEN_MAX];
-    uint32_t _ir_ready[MAX30102_SAMPLE_LEN_MAX];
-    uint32_t _red_ready[MAX30102_SAMPLE_LEN_MAX];
+    int32_t _ir_samples[MAX30102_SAMPLE_LEN_MAX];
+    int32_t _red_samples[MAX30102_SAMPLE_LEN_MAX];
+    int32_t _ir_ready[MAX30102_SAMPLE_LEN_MAX];
+    int32_t _red_ready[MAX30102_SAMPLE_LEN_MAX];
     uint8_t _sample_index;
     uint64_t _ir_mean;
-	uint64_t _red_mean;
-    double auto_correlationated_data[MAX30102_SAMPLE_LEN_MAX];
+    uint64_t _red_mean;
+    double _auto_correlationated_data[MAX30102_SAMPLE_LEN_MAX];
 
     uint8_t _interrupt_flag;
 
@@ -157,8 +165,6 @@ typedef struct max30102_t
 
     max30102_data_status_t status_flag;
 } max30102_t;
-
-
 
 void max30102_plot(uint32_t ir_sample, uint32_t red_sample);
 
@@ -200,6 +206,5 @@ void max30102_clear_fifo(max30102_t *obj);
 void max30102_read_fifo(max30102_t *obj);
 
 void max30102_read_temp(max30102_t *obj, int8_t *temp_int, uint8_t *temp_frac);
-
 
 #endif

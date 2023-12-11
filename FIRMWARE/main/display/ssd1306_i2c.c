@@ -12,15 +12,11 @@
 
 #define CONFIG_OFFSETX (0)
 
-#if CONFIG_I2C_PORT_0
-#define I2C_NUM I2C_NUM_0
-#elif CONFIG_I2C_PORT_1
-#define I2C_NUM I2C_NUM_1
-#else
-#define I2C_NUM I2C_NUM_0 // if spi is selected
-#endif
+#define I2C_NUM I2C_NUM_1 // if spi is selected
 
 #define I2C_MASTER_FREQ_HZ 400000 /*!< I2C clock of SSD1306 can run at 400 kHz max. */
+
+
 
 void i2c_master_init(SSD1306_t * dev, int16_t sda, int16_t scl, int16_t reset)
 {

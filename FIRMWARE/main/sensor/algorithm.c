@@ -1,20 +1,39 @@
 #include "algorithm.h"
 #include <math.h>
 #include <stdbool.h>
+#include "esp_log.h"
 
 double time_array[BUFFER_SIZE];
 
 #define DEBUG true
 #define MINIMUM_RATIO 0.3
 
-static uint32_t sum_n_elem_in_array(uint32_t* array, uint32_t start, uint32_t end)
+static int32_t avr_n_elem_in_array(int32_t* array, uint32_t start, uint32_t end)
 {
-	return 0;
+	int64_t sum = 0;
+	uint32_t len = end - start + 1;
+	for (int i = start; i <= end; i++)
+	{
+		sum += array[i];
+	}
+	sum /= len;
+	return sum;
 }
 
-void filter_n(uint32_t *ir_buffer, uint32_t *red_buffer, int filter)
+void filter_n(int32_t *ir_buffer, int32_t *red_buffer, int filter)
 {
+	filter /= 2;
+	for (int i = 0; i < BUFFER_SIZE; i++)
+	{
+		int lower = i - filter;
+		if (lower <= 0)	lower = 0;
 
+		int upper = i + filter;
+		if (upper >= 127) upper = 127;
+
+		ir_buffer[i] = avr_n_elem_in_array(ir_buffer, lower, upper);
+		red_buffer[i] = avr_n_elem_in_array(red_buffer, lower, upper);
+	}
 }
 
 void init_time_array()
@@ -27,7 +46,7 @@ void init_time_array()
 	}
 }
 
-void remove_dc_part(uint32_t *ir_buffer, uint32_t *red_buffer, uint64_t *ir_mean, uint64_t *red_mean)
+void remove_dc_part(int32_t *ir_buffer, int32_t *red_buffer, uint64_t *ir_mean, uint64_t *red_mean)
 {
 	*ir_mean = 0;
 	*red_mean = 0;
@@ -47,14 +66,14 @@ void remove_dc_part(uint32_t *ir_buffer, uint32_t *red_buffer, uint64_t *ir_mean
 	}
 }
 
-void remove_trend_line(uint32_t *buffer)
+void remove_trend_line(int32_t *buffer)
 {
 	double a = 0;
 	double b = 0;
 
 	calculate_linear_regression(&a, &b, buffer);
 
-	/*
+/*
 	printf("angualar coef = %f\n", a);
 	printf("linear coef = %f\n", b);
 */
@@ -66,7 +85,7 @@ void remove_trend_line(uint32_t *buffer)
 	}
 }
 
-void calculate_linear_regression(double *angular_coef, double *linear_coef, uint32_t *data)
+void calculate_linear_regression(double *angular_coef, double *linear_coef, int32_t *data)
 {
 	int64_t sum_of_y = sum_of_elements(data);
 	double sum_of_x = 325.12; // Automatizar...
@@ -81,7 +100,7 @@ void calculate_linear_regression(double *angular_coef, double *linear_coef, uint
 	*linear_coef = ((sum_of_y / BUFFER_SIZE) - (*angular_coef * (sum_of_x / BUFFER_SIZE)));
 }
 
-double correlation_datay_datax(uint32_t *data_red, uint32_t *data_ir)
+double correlation_datay_datax(int32_t *data_red, int32_t *data_ir)
 {
 
 	double correlation = 0;
@@ -118,7 +137,7 @@ double correlation_datay_datax(uint32_t *data_red, uint32_t *data_ir)
 	return correlation;
 }
 
-double spo2_measurement(uint32_t *ir_data, uint32_t *red_data, uint64_t ir_mean, uint64_t red_mean)
+double spo2_measurement(int32_t *ir_data, int32_t *red_data, uint64_t ir_mean, uint64_t red_mean)
 {
 	double Z = 0;
 	double SpO2;
@@ -126,22 +145,26 @@ double spo2_measurement(uint32_t *ir_data, uint32_t *red_data, uint64_t ir_mean,
 	double red_rms = rms_value(red_data);
 
 	Z = (red_rms / red_mean) / (ir_rms / ir_mean);
-	// printf("red_rms %f\n", red_rms);
-	// printf("ir_rms %f\n", ir_rms);
-	// printf("Z %f\n", Z);
+#if SHOW_ALL == 1
+	ESP_LOGI("PROCESS", "red_rms = %f", red_rms);
+	ESP_LOGI("PROCESS", "ir_rms = %f", ir_rms);
+	ESP_LOGI("PROCESS", "Z = %f", Z);
+#endif
 
 	// SpO2 = (49.7 * Z);
 	SpO2 = (-45.06*Z + 30.354)*Z + 94.845;
 	return SpO2;
 }
 
-int calculate_heart_rate(uint32_t *ir_data, double *r0, double *auto_correlationated_data)
+int calculate_heart_rate(int32_t *ir_data, double *r0, double *auto_correlationated_data)
 {
 	double auto_correlation_result;
 	double resultado = 333;
 	double auto_coorelation_0 = auto_correlation_function(ir_data, 0);
 	*r0 = auto_coorelation_0;
-	// printf("R0 %f\n", *r0);
+#if SHOW_ALL == 1
+	ESP_LOGI("PROCESS", "R0 = %f", *r0);
+#endif
 	double biggest_value = 0;
 	int biggest_value_index = 0;
 	double division;
@@ -173,7 +196,7 @@ int calculate_heart_rate(uint32_t *ir_data, double *r0, double *auto_correlation
 	return (int)resultado;
 }
 
-double auto_correlation_function(uint32_t *data, uint32_t lag)
+double auto_correlation_function(int32_t *data, int32_t lag)
 {
 	double soma = 0;
 	double resultado = 0;
@@ -185,7 +208,7 @@ double auto_correlation_function(uint32_t *data, uint32_t lag)
 	return resultado;
 }
 
-uint64_t sum_of_elements(uint32_t *data)
+int64_t sum_of_elements(int32_t *data)
 {
 	int64_t sum = 0;
 	for (int i = 0; i < BUFFER_SIZE; i++)
@@ -195,7 +218,7 @@ uint64_t sum_of_elements(uint32_t *data)
 	return sum;
 }
 
-double sum_of_xy_elements(uint32_t *data)
+double sum_of_xy_elements(int32_t *data)
 {
 	double sum_xy = 0;
 	double time = 0;
@@ -207,7 +230,7 @@ double sum_of_xy_elements(uint32_t *data)
 	return sum_xy;
 }
 
-double sum_of_squared_elements(uint32_t *data)
+double sum_of_squared_elements(int32_t *data)
 {
 	double sum_squared = 0;
 	int time = 0;
@@ -235,7 +258,7 @@ double somatoria_x2()
 	return resultado;
 }
 
-double rms_value(uint32_t *data)
+double rms_value(int32_t *data)
 {
 	double result = 0;
 	int32_t somatoria = 0;
