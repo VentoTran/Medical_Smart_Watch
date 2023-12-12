@@ -50,6 +50,8 @@
 #define ITEM_SIZE_HR sizeof(uint8_t)
 #define ITEM_SIZE_SPO2 sizeof(double)
 
+#define ALLOW_VALUE_0 (1)
+
 typedef enum
 {
     IDLE = 0,
@@ -61,13 +63,14 @@ typedef enum
 typedef struct
 {
     uint8_t HR;
-    uint8_t SpO2;
+    uint16_t SpO2;
 } Data_Storage_t;
 
-static const char whoIam[10] = "IamVTsMSW:";
+static const char whoIam[11] = "IamVTsMSW:\0";
 
 static bool s_led_state = false;
 static bool is_Time_Sync = false;
+static bool is_Data_Saved = false;
 static bool is_HR_Data_Point_Valid = false;
 static bool is_SpO2_Data_Point_Valid = false;
 static uint8_t HR_Now = 0;
@@ -84,6 +87,7 @@ static max30102_t sensor;
 static TaskHandle_t sensor_read_task_handle = NULL;
 static TaskHandle_t sensor_process_task_handle = NULL;
 static TaskHandle_t display_task_handle = NULL;
+static TaskHandle_t tranfer_all_task_handle = NULL;
 static nvs_handle_t data_base_handle;
 static struct tm myLocalTime = {
     .tm_year = 2000 - 1900,
@@ -104,6 +108,7 @@ static Data_Storage_t myDataBase[(uint32_t)(TOTAL_MINS_IN_A_DAY / DATA_BASE_SAMP
 void sensorReadTask(void *pvParameters);
 void sensorProcessTask(void *pvParameters);
 void displayTask(void *pvParameters);
+void tranferAllTask(void *pvParameters);
 
 // ===========================================================================================================================================================
 
@@ -207,6 +212,54 @@ void printIntroduction(void)
     ESP_LOGI("CHIP", "Minimum free heap size: %ld bytes", esp_get_minimum_free_heap_size());
 }
 
+void NVS_StoreDataBase(void)
+{
+    ESP_LOGI("NVS", "NVS SAVING DATA...");
+
+    esp_err_t err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &data_base_handle);
+    if (err != ESP_OK)
+        ESP_LOGE("NVS", "Error at nvs_open: %s", esp_err_to_name(err));
+
+    size_t required_size = 0;
+    err = nvs_get_blob(data_base_handle, DATA_BASE_KEY, NULL, &required_size);
+    if ((err != ESP_OK) && (err != ESP_ERR_NVS_NOT_FOUND))
+        ESP_LOGE("NVS", "Error at nvs_get_blob: %s", esp_err_to_name(err));
+
+    ESP_LOGI("NVS", "Check NVS Data Base, found blob of size %i bytes", required_size);
+
+    if ((err == ESP_OK) && (required_size == sizeof(myDataBase)))
+    {
+        err = nvs_set_blob(data_base_handle, DATA_BASE_KEY, &myDataBase, sizeof(myDataBase));
+        if (err != ESP_OK)
+            ESP_LOGE("NVS", "Error at nvs_set_blob trying to save data: %s", esp_err_to_name(err));
+    }
+
+    // if ((err == ESP_ERR_NVS_NOT_FOUND) || (required_size == 0) || (required_size != sizeof(myDataBase)))
+    // {
+    //     ESP_LOGW("NVS", "First Time Initialize Data Base");
+    //     err = nvs_set_blob(data_base_handle, DATA_BASE_KEY, &myDataBase, sizeof(myDataBase));
+    //     if (err != ESP_OK)
+    //         ESP_LOGE("NVS", "Error at nvs_set_blob: %s", esp_err_to_name(err));
+    // }
+    // if ((err == ESP_OK) && (required_size == sizeof(myDataBase)))
+    // {
+    //     ESP_LOGI("NVS", "Getting Data Base...");
+    //     err = nvs_get_blob(data_base_handle, DATA_BASE_KEY, &myDataBase, &required_size);
+    //     if (err == ESP_OK)
+    //         ESP_LOGI("NVS", "Success!");
+    //     else
+    //         ESP_LOGE("NVS", "Error at nvs_set_blob to load data base: %s", esp_err_to_name(err));
+    // }
+
+    err = nvs_commit(data_base_handle);
+    if (err != ESP_OK)
+        ESP_LOGE("NVS", "Error at nvs_commit: %s", esp_err_to_name(err));
+
+    nvs_close(data_base_handle);
+
+    ESP_LOGI("NVS", "NVS DONE!");
+}
+
 // ===========================================================================================================================================================
 
 void app_main(void)
@@ -287,9 +340,14 @@ void app_main(void)
 
     {
         time_t t = mktime(&myLocalTime);
-        ESP_LOGI("TIME", "Setting time to %s", asctime(&myLocalTime));
+        // ESP_LOGI("TIME", "Setting time to %s", asctime(&myLocalTime));
         struct timeval now = {.tv_sec = t};
         settimeofday(&now, NULL);
+        setenv("TZ", "ICT", 1);
+        tzset();
+        char strftime_buf[64];
+        strftime(strftime_buf, sizeof(strftime_buf), "%c", &myLocalTime);
+        ESP_LOGI("TIME", "The current date/time is: %s", strftime_buf);
     }
 
     {
@@ -310,7 +368,7 @@ void app_main(void)
     {
         gpio_set_level(BLINK_GPIO, (uint32_t)s_led_state);
         // ESP_LOGI("Blink", "Blinking!");
-        if (bluetooh_connected == true)
+        if (bluetooth_connected == true)
             led_blink_periodMS = 1000;
         else
             led_blink_periodMS = 3000;
@@ -319,6 +377,9 @@ void app_main(void)
         else
             vTaskDelay(led_blink_periodMS);
         s_led_state = !s_led_state;
+        time_t now;
+        time(&now);
+        localtime_r(&now, &myLocalTime);
     }
 }
 
@@ -409,7 +470,10 @@ void sensorProcessTask(void *pvParameters)
     {
         HR_continuous_invalid_sample_count++;
         if (HR_continuous_invalid_sample_count >= 3)
+        {
+            HR_Now = 0;
             is_HR_Data_Point_Valid = false;
+        }
     }
 
     if ((sensor.SpO2 >= 90.0) && (sensor.SpO2 <= 100.0))
@@ -422,7 +486,10 @@ void sensorProcessTask(void *pvParameters)
     {
         SpO2_continuous_invalid_sample_count++;
         if (SpO2_continuous_invalid_sample_count >= 3)
+        {
+            SpO2_Now = 0.0;
             is_SpO2_Data_Point_Valid = false;
+        }
     }
 
     if ((uxQueueSpacesAvailable(xQueue_HR) <= (QUEUE_LENGTH - FILTER_AVR_SAMPLE)) && ((is_HR_Data_Point_Valid == false) || (Device_Status == CONTINUOUSLY)))
@@ -440,13 +507,14 @@ void sensorProcessTask(void *pvParameters)
         if (uxQueueSpacesAvailable(xQueue_HR) != QUEUE_LENGTH)
         {
             ESP_LOGW("PROCESS", "HR Queue not empty!");
+            is_HR_Data_Point_Valid = false;
         }
         else
         {
             ESP_LOGI("PROCESS", "HR Data Point!");
             is_HR_Data_Point_Valid = true;
-            xQueueReset(xQueue_HR);
         }
+        xQueueReset(xQueue_HR);
     }
 
     if ((uxQueueSpacesAvailable(xQueue_SpO2) <= (QUEUE_LENGTH - FILTER_AVR_SAMPLE)) && ((is_SpO2_Data_Point_Valid == false) || (Device_Status == CONTINUOUSLY)))
@@ -464,31 +532,60 @@ void sensorProcessTask(void *pvParameters)
         if (uxQueueSpacesAvailable(xQueue_SpO2) != QUEUE_LENGTH)
         {
             ESP_LOGW("PROCESS", "SpO2 Queue not empty!");
+            is_SpO2_Data_Point_Valid = false;
         }
         else
         {
             ESP_LOGI("PROCESS", "SpO2 Data Point!");
             is_SpO2_Data_Point_Valid = true;
-            xQueueReset(xQueue_SpO2);
         }
+        xQueueReset(xQueue_SpO2);
     }
 
     if ((is_HR_Data_Point_Valid == true) && (is_SpO2_Data_Point_Valid == true) && (Device_Status == SINGLE))
     {
-        // xQueueReset(xQueue_HR);
-        // xQueueReset(xQueue_SpO2);
         ESP_LOGI("PROCESS", "SINGLE DONE!");
         sensor.status_flag = max30102_gather_data;
-        if (sensor_read_task_handle != NULL)
-            vTaskDelete(sensor_read_task_handle);
-        max30102_reset(&sensor);
-        if (sensor_process_task_handle != NULL)
-            vTaskDelete(sensor_process_task_handle);
+
+        if (is_Time_Sync == true)
+        {
+            uint32_t reqTimeStamp = myLocalTime.tm_hour * 60 + myLocalTime.tm_min;
+            reqTimeStamp /= DATA_BASE_SAMPLE_PERIOD_MINS;
+            Data_Storage_t dataStored = {
+                .HR = HR_Now,
+                .SpO2 = (uint16_t)(SpO2_Now * 10.0)};
+            myDataBase[reqTimeStamp] = dataStored;
+            NVS_StoreDataBase();
+            ESP_LOGI("PROCESS", "Stored data at timestamp %02d:%02d, store at index %ld", myLocalTime.tm_hour, myLocalTime.tm_min, reqTimeStamp);
+            if (sensor_read_task_handle != NULL)
+                vTaskDelete(sensor_read_task_handle);
+            max30102_reset(&sensor);
+            if (sensor_process_task_handle != NULL)
+                vTaskDelete(sensor_process_task_handle);
+        }
     }
 
     if (Device_Status == CONTINUOUSLY)
     {
         ESP_LOGI("PROCESS", "CONTINUOUS!");
+        if (is_Time_Sync == true)
+        {
+            if (((myLocalTime.tm_min % 2) == 0) && (is_Data_Saved == false))
+            {
+                ESP_LOGI("TIME", "Time to save data");
+                uint32_t reqTimeStamp = myLocalTime.tm_hour * 60 + myLocalTime.tm_min;
+                reqTimeStamp /= DATA_BASE_SAMPLE_PERIOD_MINS;
+                Data_Storage_t dataStored = {
+                    .HR = HR_Now,
+                    .SpO2 = (uint16_t)(SpO2_Now * 10.0)};
+                myDataBase[reqTimeStamp] = dataStored;
+                NVS_StoreDataBase();
+                ESP_LOGI("PROCESS", "Stored data at timestamp %02d:%02d, store at index %ld", myLocalTime.tm_hour, myLocalTime.tm_min, reqTimeStamp);
+                is_Data_Saved = true;
+            }
+            else if ((myLocalTime.tm_min % 2) == 1)
+                is_Data_Saved = false;
+        }
     }
 
     sensor.status_flag = max30102_gather_data;
@@ -612,21 +709,44 @@ void displayTask(void *pvParameters)
     }
 }
 
+void tranferAllTask(void *pvParameters)
+{
+    struct spp_write_evt_param write;
+    memcpy(&write, pvParameters, sizeof(struct spp_write_evt_param));
+    int num = sizeof(myDataBase) / sizeof(Data_Storage_t);
+    for (int i = 0; i < num; i++)
+    {
+        char tempString[20] = {0};
+        Data_Storage_t dataStored = myDataBase[i];
+        sprintf(tempString, "DATA,%d,%d,%.1f:%c", i, dataStored.HR, (double)dataStored.SpO2 / 10.0, '\0');
+        bluetooth_sent = false;
+        esp_spp_write(write.handle, strlen(tempString), (uint8_t *)tempString);
+        while (bluetooth_sent == false) vTaskDelay(1);
+    }
+    ESP_LOGI("BLUETOOTH", "DONE tranfer ALL the data!");
+    vTaskDelete(tranfer_all_task_handle);
+}
+
 // ===========================================================================================================================================================
 
 void bluetooth_data_recv_cb(esp_spp_cb_param_t *param, char *data, int len)
 {
     if (strstr((const char *)data, (const char *)"WhoAreYou?") != NULL)
-        esp_spp_write(param->write.handle, sizeof(whoIam), (uint8_t *)whoIam);
+    {
+        esp_spp_write(param->write.handle, 10U, (uint8_t *)whoIam);
+        ESP_LOGI("BLUETOOTH", "Response to Phone %s", whoIam);
+    }
 
     if (strstr((const char *)data, (const char *)"TIME") != NULL)
     {
-        sscanf(data, "TIME,%d,%d,%d,%d,%d!", &myLocalTime.tm_year, &myLocalTime.tm_mon, &myLocalTime.tm_mday, &myLocalTime.tm_hour, &myLocalTime.tm_min);
+        sscanf(data, "TIME,%d,%d,%d,%d,%d,%d!", &myLocalTime.tm_year, &myLocalTime.tm_mon, &myLocalTime.tm_mday, &myLocalTime.tm_hour, &myLocalTime.tm_min, &myLocalTime.tm_sec);
         myLocalTime.tm_mon--;
         myLocalTime.tm_year -= 1900;
         {
             time_t t = mktime(&myLocalTime);
-            ESP_LOGI("TIME", "Setting time to %s", asctime(&myLocalTime));
+            char strftime_buf[64];
+            strftime(strftime_buf, sizeof(strftime_buf), "%c", &myLocalTime);
+            ESP_LOGI("TIME", "The current date/time is: %s", strftime_buf);
             struct timeval now = {.tv_sec = t};
             settimeofday(&now, NULL);
             is_Time_Sync = true;
@@ -637,17 +757,36 @@ void bluetooth_data_recv_cb(esp_spp_cb_param_t *param, char *data, int len)
     {
         uint32_t reqTimeStamp = 0;
         sscanf(data, "DATA,%ld?", &reqTimeStamp);
+        uint8_t hour = (uint8_t)(reqTimeStamp / 100);
+        uint8_t min = (uint8_t)(reqTimeStamp % 100);
+
         reqTimeStamp = (reqTimeStamp / 100) * 60 + (reqTimeStamp % 100);
         reqTimeStamp /= DATA_BASE_SAMPLE_PERIOD_MINS;
 
-        if (reqTimeStamp < (sizeof(myDataBase)/sizeof(Data_Storage_t)))
+        ESP_LOGI("BLUETOOTH", "Requested data at timestamp %02d:%02d, store at index %ld", hour, min, reqTimeStamp);
+
+        if (reqTimeStamp < (sizeof(myDataBase) / sizeof(Data_Storage_t)))
         {
             Data_Storage_t dataStored = myDataBase[reqTimeStamp];
-            if ((dataStored.HR > 0) && (dataStored.SpO2 > 0))
+#if ALLOW_VALUE_0 == 0
+            if ((dataStored.HR > 0) || (dataStored.SpO2 > 0))
             {
+#endif
                 char tempString[20] = {0};
-                
+                sprintf(tempString, "DATA,%ld,%d,%.1f:%c", reqTimeStamp, dataStored.HR, (double)dataStored.SpO2 / 10.0, '\0');
+                ESP_LOGI("BLUETOOTH", "Response to Phone %s", tempString);
+                esp_spp_write(param->write.handle, strlen(tempString), (uint8_t *)tempString);
+#if ALLOW_VALUE_0 == 0
             }
+#endif
         }
+    }
+
+    if (strstr((const char *)data, (const char *)"ALL!") != NULL)
+    {
+        ESP_LOGI("BLUETOOTH", "Response to Phone ALL the data!");
+        BaseType_t ret = xTaskCreatePinnedToCore(tranferAllTask, "Sensor Process", 12288, param, tskIDLE_PRIORITY + 5, &tranfer_all_task_handle, 1U);
+        if (ret != pdPASS)
+            ESP_LOGE("Task", "FAIL Tranfer All Task");
     }
 }

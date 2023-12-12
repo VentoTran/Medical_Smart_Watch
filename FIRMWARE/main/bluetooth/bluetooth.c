@@ -18,7 +18,8 @@
 #define SPP_SHOW_SPEED 1
 #define SPP_SHOW_MODE SPP_SHOW_SPEED
 
-bool bluetooh_connected = false;
+bool volatile bluetooth_connected = false;
+bool volatile bluetooth_sent = false;
 
 static const esp_spp_mode_t esp_spp_mode = ESP_SPP_MODE_CB;
 static const bool esp_spp_enable_l2cap_ertm = true;
@@ -160,7 +161,7 @@ void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
 
     case ESP_SPP_CLOSE_EVT:
         ESP_LOGI(SPP_TAG, "ESP_SPP_CLOSE_EVT status:%d handle:%" PRIu32 " close_by_remote:%d", param->close.status, param->close.handle, param->close.async);
-        bluetooh_connected = false;
+        bluetooth_connected = false;
         break;
 
     case ESP_SPP_START_EVT:
@@ -186,8 +187,8 @@ void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
         {
             esp_log_buffer_hex("", param->data_ind.data, param->data_ind.len);
             param->data_ind.data[param->data_ind.len] = '\0';
-            bluetooth_data_recv_cb(param, (char*)param->data_ind.data, (int)param->data_ind.len);
             ESP_LOGI(SPP_TAG, "ESP_SPP_DATA_IND_EVT data: %s", param->data_ind.data);
+            bluetooth_data_recv_cb(param, (char*)param->data_ind.data, (int)param->data_ind.len);
         }
         gettimeofday(&time_new, NULL);
         data_num += param->data_ind.len;
@@ -203,12 +204,13 @@ void esp_spp_cb(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
 
     case ESP_SPP_WRITE_EVT:
         ESP_LOGI(SPP_TAG, "ESP_SPP_WRITE_EVT");
+        bluetooth_sent = true;
         break;
 
     case ESP_SPP_SRV_OPEN_EVT:
         ESP_LOGI(SPP_TAG, "ESP_SPP_SRV_OPEN_EVT status:%d handle:%" PRIu32 ", rem_bda:[%s]", param->srv_open.status, param->srv_open.handle, bda2str(param->srv_open.rem_bda, bda_str, sizeof(bda_str)));
         gettimeofday(&time_old, NULL);
-        bluetooh_connected = true;
+        bluetooth_connected = true;
         break;
 
     case ESP_SPP_SRV_STOP_EVT:

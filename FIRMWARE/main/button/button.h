@@ -55,7 +55,7 @@ extern "C" {
 
 #define CONFIG_BUTTON_DEBOUNCE_SHORT_TIME   (100)
 #define CONFIG_BUTTON_DEBOUNCE_MEDIUM_TIME  (1000)
-#define CONFIG_BUTTON_DEBOUNCE_LONG_TIME    (2000)
+#define CONFIG_BUTTON_DEBOUNCE_LONG_TIME    (3000)
 
 /* Exported types ------------------------------------------------------------*/
 typedef void (* button_cb_t)(void *);

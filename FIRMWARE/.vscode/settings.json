@@ -9,6 +9,9 @@
         "i2c.h": "c",
         "stdio.h": "c",
         "max30102.h": "c",
-        "algorithm.h": "c"
+        "algorithm.h": "c",
+        "chrono": "c",
+        "random": "c",
+        "limits": "c"
     }
 }

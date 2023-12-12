@@ -20,8 +20,8 @@
 #include "time.h"
 #include "sys/time.h"
 
-extern bool bluetooh_connected;
-
+extern bool volatile bluetooth_connected;
+extern bool volatile bluetooth_sent;
 
 esp_err_t bluetooth_init(void);
 void bluetooth_data_recv_cb(esp_spp_cb_param_t* param, char* data, int len);
