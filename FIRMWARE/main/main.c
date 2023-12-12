@@ -40,7 +40,7 @@
 #define MPU_INT (27)
 
 #define TOTAL_MINS_IN_A_DAY (24 * 60)
-#define DATA_BASE_SAMPLE_PERIOD_MINS (10)
+#define DATA_BASE_SAMPLE_PERIOD_MINS (2)
 
 #define STORAGE_NAMESPACE "MSW_Data_Base"
 #define DATA_BASE_KEY "Data_Base_Key"
@@ -60,7 +60,6 @@ typedef enum
 
 typedef struct
 {
-    uint8_t time;
     uint8_t HR;
     uint8_t SpO2;
 } Data_Storage_t;
@@ -68,7 +67,7 @@ typedef struct
 static const char whoIam[10] = "IamVTsMSW:";
 
 static bool s_led_state = false;
-static bool is_Time_Sync = true;
+static bool is_Time_Sync = false;
 static bool is_HR_Data_Point_Valid = false;
 static bool is_SpO2_Data_Point_Valid = false;
 static uint8_t HR_Now = 0;
@@ -615,8 +614,40 @@ void displayTask(void *pvParameters)
 
 // ===========================================================================================================================================================
 
-void bluetooth_data_recv_cb(esp_spp_cb_param_t* param, char *data, int len)
+void bluetooth_data_recv_cb(esp_spp_cb_param_t *param, char *data, int len)
 {
     if (strstr((const char *)data, (const char *)"WhoAreYou?") != NULL)
         esp_spp_write(param->write.handle, sizeof(whoIam), (uint8_t *)whoIam);
+
+    if (strstr((const char *)data, (const char *)"TIME") != NULL)
+    {
+        sscanf(data, "TIME,%d,%d,%d,%d,%d!", &myLocalTime.tm_year, &myLocalTime.tm_mon, &myLocalTime.tm_mday, &myLocalTime.tm_hour, &myLocalTime.tm_min);
+        myLocalTime.tm_mon--;
+        myLocalTime.tm_year -= 1900;
+        {
+            time_t t = mktime(&myLocalTime);
+            ESP_LOGI("TIME", "Setting time to %s", asctime(&myLocalTime));
+            struct timeval now = {.tv_sec = t};
+            settimeofday(&now, NULL);
+            is_Time_Sync = true;
+        }
+    }
+
+    if (strstr((const char *)data, (const char *)"DATA") != NULL)
+    {
+        uint32_t reqTimeStamp = 0;
+        sscanf(data, "DATA,%ld?", &reqTimeStamp);
+        reqTimeStamp = (reqTimeStamp / 100) * 60 + (reqTimeStamp % 100);
+        reqTimeStamp /= DATA_BASE_SAMPLE_PERIOD_MINS;
+
+        if (reqTimeStamp < (sizeof(myDataBase)/sizeof(Data_Storage_t)))
+        {
+            Data_Storage_t dataStored = myDataBase[reqTimeStamp];
+            if ((dataStored.HR > 0) && (dataStored.SpO2 > 0))
+            {
+                char tempString[20] = {0};
+                
+            }
+        }
+    }
 }

@@ -76,7 +76,7 @@ static esp_err_t i2c_sensor_write(max30102_t *obj, uint8_t *data_wr, size_t size
 void max30102_process(max30102_t *obj)
 {
 // #if PLOT_FINE == 1
-//     for (uint8_t i = 0; i < MAX30102_SAMPLE_LEN_MAX; i++)
+//     for (int i = 0; i < MAX30102_SAMPLE_LEN_MAX; i++)
 //     {
 //         // ESP_LOGI("Sensor", " %ld|%ld ", obj->_ir_ready[i], obj->_red_ready[i]);
 //         printf("%ld|%ld\n", obj->_ir_ready[i], obj->_red_ready[i]);
@@ -104,7 +104,7 @@ void max30102_process(max30102_t *obj)
     }
 
 #if PLOT_FINE == 1
-    for (uint8_t i = 0; i < MAX30102_SAMPLE_LEN_MAX; i++)
+    for (int i = 0; i < MAX30102_SAMPLE_LEN_MAX; i++)
     {
         // ESP_LOGI("Sensor", " %ld|%ld ", obj->_ir_ready[i], obj->_red_ready[i]);
         printf("%ld|%ld\n", obj->_ir_ready[i], obj->_red_ready[i]);
