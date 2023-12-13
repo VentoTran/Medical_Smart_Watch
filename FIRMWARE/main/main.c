@@ -79,6 +79,7 @@ static uint8_t HR_continuous_invalid_sample_count = 0;
 static uint8_t SpO2_continuous_invalid_sample_count = 0;
 static Measure_Status_t Device_Status = IDLE;
 static uint16_t led_blink_periodMS = 3000;
+static struct spp_write_evt_param write;
 
 static button_t button;
 static SSD1306_t display;
@@ -116,20 +117,10 @@ void button_cb_press_once(void *arg)
 {
     ESP_LOGI("Button", "Single Click");
 
-    if ((Device_Status == SINGLE) && ((is_HR_Data_Point_Valid != true) || (is_SpO2_Data_Point_Valid != true)))
-        return;
-    else if ((Device_Status == SINGLE) && (is_HR_Data_Point_Valid == true) && (is_SpO2_Data_Point_Valid == true))
+    if ((Device_Status == SINGLE) && (is_HR_Data_Point_Valid == true) && (is_SpO2_Data_Point_Valid == true))
     {
         Device_Status = IDLE;
         ESP_LOGI("MODE", "Enter IDLE Mode");
-    }
-    else if (Device_Status == CONTINUOUSLY)
-    {
-        Device_Status = IDLE;
-        ESP_LOGI("MODE", "Enter IDLE Mode");
-        if (sensor_read_task_handle != NULL)
-            vTaskDelete(sensor_read_task_handle);
-        max30102_reset(&sensor);
     }
     else if (Device_Status == SLEEP)
     {
@@ -137,6 +128,14 @@ void button_cb_press_once(void *arg)
         ESP_LOGI("MODE", "Enter IDLE Mode");
         ssd1306_contrast(&display, 0xFF);
     }
+    // else if (Device_Status == CONTINUOUSLY)
+    // {
+    //     Device_Status = IDLE;
+    //     ESP_LOGI("MODE", "Enter IDLE Mode");
+    //     if (sensor_read_task_handle != NULL)
+    //         vTaskDelete(sensor_read_task_handle);
+    //     max30102_reset(&sensor);
+    // }
 }
 
 void button_cb_press_twice(void *arg)
@@ -165,7 +164,7 @@ void button_cb_press_twice(void *arg)
 void button_cb_hold(void *arg)
 {
     ESP_LOGI("Button", "Hold");
-    if ((Device_Status == IDLE) || (Device_Status == SINGLE))
+    if ((Device_Status == IDLE) || ((Device_Status == SINGLE) && (is_HR_Data_Point_Valid == true) && (is_SpO2_Data_Point_Valid == true)))
     {
         Device_Status = CONTINUOUSLY;
         ESP_LOGI("MODE", "Enter CONTINUOUS Mode");
@@ -173,6 +172,11 @@ void button_cb_hold(void *arg)
         ret = xTaskCreatePinnedToCore(sensorReadTask, "Sensor Read", 8192, NULL, tskIDLE_PRIORITY + 10, &sensor_read_task_handle, 0U);
         if (ret != pdPASS)
             ESP_LOGE("Task", "FAIL Sensor Task");
+    }
+    else if ((Device_Status == SINGLE) && ((is_HR_Data_Point_Valid != true) || (is_SpO2_Data_Point_Valid != true)))
+    {
+        Device_Status = CONTINUOUSLY;
+        ESP_LOGI("MODE", "Enter CONTINUOUS Mode");
     }
     else if (Device_Status == CONTINUOUSLY)
     {
@@ -283,6 +287,7 @@ void app_main(void)
 
     button_add_cb(&button, BUTTON_CLICK_SINGLE, button_cb_press_once, NULL);
     button_add_cb(&button, BUTTON_CLICK_MEDIUM, button_cb_hold, NULL);
+    button_add_cb(&button, BUTTON_CLICK_LONG, button_cb_hold, NULL);
     button_add_cb(&button, BUTTON_CLICK_DOUBLE, button_cb_press_twice, NULL);
 
     max30102_init(&sensor, 0, MAX_SDA, MAX_SCL, 400000);
@@ -513,6 +518,15 @@ void sensorProcessTask(void *pvParameters)
         {
             ESP_LOGI("PROCESS", "HR Data Point!");
             is_HR_Data_Point_Valid = true;
+            if (is_Time_Sync == true)
+            {
+                uint32_t reqTimeStamp = myLocalTime.tm_hour * 60 + myLocalTime.tm_min;
+                reqTimeStamp /= DATA_BASE_SAMPLE_PERIOD_MINS;
+                Data_Storage_t dataStored = {
+                    .HR = (myDataBase[reqTimeStamp].HR == 0) ? (HR_Now) : ((myDataBase[reqTimeStamp].HR + HR_Now) / 2),
+                    .SpO2 = myDataBase[reqTimeStamp].SpO2};
+                myDataBase[reqTimeStamp] = dataStored;
+            }
         }
         xQueueReset(xQueue_HR);
     }
@@ -538,6 +552,15 @@ void sensorProcessTask(void *pvParameters)
         {
             ESP_LOGI("PROCESS", "SpO2 Data Point!");
             is_SpO2_Data_Point_Valid = true;
+            if (is_Time_Sync == true)
+            {
+                uint32_t reqTimeStamp = myLocalTime.tm_hour * 60 + myLocalTime.tm_min;
+                reqTimeStamp /= DATA_BASE_SAMPLE_PERIOD_MINS;
+                Data_Storage_t dataStored = {
+                    .HR = myDataBase[reqTimeStamp].HR,
+                    .SpO2 = (myDataBase[reqTimeStamp].SpO2 == 0.0) ? ((uint16_t)(SpO2_Now * 10.0)) : (((uint16_t)(SpO2_Now * 10.0) + myDataBase[reqTimeStamp].SpO2) / 2)};
+                myDataBase[reqTimeStamp] = dataStored;
+            }
         }
         xQueueReset(xQueue_SpO2);
     }
@@ -550,6 +573,8 @@ void sensorProcessTask(void *pvParameters)
         if (is_Time_Sync == true)
         {
             uint32_t reqTimeStamp = myLocalTime.tm_hour * 60 + myLocalTime.tm_min;
+            if (reqTimeStamp % 2 == 1)
+                reqTimeStamp++;
             reqTimeStamp /= DATA_BASE_SAMPLE_PERIOD_MINS;
             Data_Storage_t dataStored = {
                 .HR = HR_Now,
@@ -563,6 +588,15 @@ void sensorProcessTask(void *pvParameters)
             if (sensor_process_task_handle != NULL)
                 vTaskDelete(sensor_process_task_handle);
         }
+    }
+
+    if ((is_HR_Data_Point_Valid == true) && (is_SpO2_Data_Point_Valid == true) && (Device_Status == CONTINUOUSLY) && (bluetooth_connected == true) && (is_Time_Sync == true))
+    {
+        ESP_LOGI("BLUETOOTH", "Update New Data to App");
+        char tempString[30] = {0};
+        sprintf(tempString, "UPDATE,%d,%.1f:%c", HR_Now, SpO2_Now, '\0');
+        ESP_LOGI("BLUETOOTH", "Send Update to Phone %s", tempString);
+        esp_spp_write(write.handle, strlen(tempString), (uint8_t *)tempString);
     }
 
     if (Device_Status == CONTINUOUSLY)
@@ -698,6 +732,7 @@ void displayTask(void *pvParameters)
         {
             ssd1306_contrast(&display, 0U);
             ssd1306_clear_screen(&display, false);
+            vTaskSuspend(display_task_handle);
             break;
         }
         default:
@@ -711,8 +746,6 @@ void displayTask(void *pvParameters)
 
 void tranferAllTask(void *pvParameters)
 {
-    struct spp_write_evt_param write;
-    memcpy(&write, pvParameters, sizeof(struct spp_write_evt_param));
     int num = sizeof(myDataBase) / sizeof(Data_Storage_t);
     for (int i = 0; i < num; i++)
     {
@@ -721,7 +754,9 @@ void tranferAllTask(void *pvParameters)
         sprintf(tempString, "DATA,%d,%d,%.1f:%c", i, dataStored.HR, (double)dataStored.SpO2 / 10.0, '\0');
         bluetooth_sent = false;
         esp_spp_write(write.handle, strlen(tempString), (uint8_t *)tempString);
-        while (bluetooth_sent == false) vTaskDelay(1);
+        while (bluetooth_sent == false)
+            vTaskDelay(1);
+        vTaskDelay(5);
     }
     ESP_LOGI("BLUETOOTH", "DONE tranfer ALL the data!");
     vTaskDelete(tranfer_all_task_handle);
@@ -731,6 +766,8 @@ void tranferAllTask(void *pvParameters)
 
 void bluetooth_data_recv_cb(esp_spp_cb_param_t *param, char *data, int len)
 {
+    memcpy(&write, param, sizeof(struct spp_write_evt_param));
+
     if (strstr((const char *)data, (const char *)"WhoAreYou?") != NULL)
     {
         esp_spp_write(param->write.handle, 10U, (uint8_t *)whoIam);
@@ -785,7 +822,7 @@ void bluetooth_data_recv_cb(esp_spp_cb_param_t *param, char *data, int len)
     if (strstr((const char *)data, (const char *)"ALL!") != NULL)
     {
         ESP_LOGI("BLUETOOTH", "Response to Phone ALL the data!");
-        BaseType_t ret = xTaskCreatePinnedToCore(tranferAllTask, "Sensor Process", 12288, param, tskIDLE_PRIORITY + 5, &tranfer_all_task_handle, 1U);
+        BaseType_t ret = xTaskCreatePinnedToCore(tranferAllTask, "Sensor Process", 4096, NULL, tskIDLE_PRIORITY + 5, &tranfer_all_task_handle, 1U);
         if (ret != pdPASS)
             ESP_LOGE("Task", "FAIL Tranfer All Task");
     }
