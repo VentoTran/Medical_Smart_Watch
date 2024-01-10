@@ -1,4 +1,0 @@
-Removed Pin From Net: NetName=CHRG Pin=TP1-1
-Removed Pin From Net: NetName=STDBY Pin=TP2-1
-Removed Member From Class: ClassName=MSW_V2 Member=TP1
-Removed Member From Class: ClassName=MSW_V2 Member=TP2

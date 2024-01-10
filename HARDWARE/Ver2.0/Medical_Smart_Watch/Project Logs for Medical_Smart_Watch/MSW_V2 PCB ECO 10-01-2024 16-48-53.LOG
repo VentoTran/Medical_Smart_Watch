@@ -1,8 +1,0 @@
-Removed Pin From Net: NetName=STDBY Pin=IC1-6
-Removed Pin From Net: NetName=CHRG Pin=IC1-7
-Removed Pin From Net: NetName=STDBY Pin=TP1-1
-Removed Pin From Net: NetName=CHRG Pin=TP2-1
-Added Pin To Net: NetName=CHRG Pin=IC1-6
-Added Pin To Net: NetName=STDBY Pin=IC1-7
-Added Pin To Net: NetName=CHRG Pin=TP1-1
-Added Pin To Net: NetName=STDBY Pin=TP2-1
