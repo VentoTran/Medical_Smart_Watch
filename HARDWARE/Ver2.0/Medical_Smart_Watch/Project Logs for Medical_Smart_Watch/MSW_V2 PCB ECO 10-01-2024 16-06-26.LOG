@@ -1,0 +1,45 @@
+Removed Pin From Net: NetName=CTRL_PWR Pin=IC1-10
+Removed Pin From Net: NetName=V_MAIN Pin=R21-2
+Removed Pin From Net: NetName=CTRL_PWR Pin=TP7-1
+Change Component Designator: OldDesignator=C13 NewDesignator=C14
+Change Component Designator: OldDesignator=C14 NewDesignator=C15
+Change Component Designator: OldDesignator=C15 NewDesignator=C16
+Change Component Designator: OldDesignator=C16 NewDesignator=C17
+Change Component Designator: OldDesignator=C17 NewDesignator=C18
+Change Component Designator: OldDesignator=TP7 NewDesignator=TP8
+Change Component Designator: OldDesignator=TP8 NewDesignator=TP9
+Change Component Designator: OldDesignator=TP9 NewDesignator=TP10
+Change Component Designator: OldDesignator=TP10 NewDesignator=TP11
+Change Component Designator: OldDesignator=TP11 NewDesignator=TP12
+Change Component Designator: OldDesignator=TP12 NewDesignator=TP13
+Change Component Designator: OldDesignator=TP13 NewDesignator=TP14
+Change Component Designator: OldDesignator=TP14 NewDesignator=TP15
+Change Component Designator: OldDesignator=TP15 NewDesignator=TP16
+Added Component: Designator=C13(CAP_7343)
+Added Component: Designator=J3(JP2-C1T)
+Add component (AddParameter): Name = "ComponentLink1 Description"; Value = "Manufacturer"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "ComponentLink1URL"; Value = "http://www.we-online.com"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "ComponentLink2 Description"; Value = "Datasheet"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "ComponentLink2URL"; Value = "http://katalog.we-online.de/em/datasheet/6130xx143121.pdf"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Created by"; Value = "Karrer Zheng"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Created Date"; Value = "29 March 2013"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "Manufacturer"; Value = "W¨¹rth Elektronik eiSos GmbH"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "NoPins"; Value = "02"; VariantName = "[No Variations]"
+Add component (AddParameter): Name = "partNo"; Value = "613002143121"; VariantName = "[No Variations]"
+Added Component: Designator=TP7(TP_SMD)
+Added Pin To Net: NetName=VCC2 Pin=C13-1
+Added Pin To Net: NetName=GND Pin=C13-2
+Added Pin To Net: NetName=VBAT Pin=J3-1
+Added Pin To Net: NetName=GND Pin=J3-2
+Added Pin To Net: NetName=GND Pin=R21-2
+Added Pin To Net: NetName=CTRL_MAIN_PWR Pin=IC1-10
+Added Pin To Net: NetName=CTRL_MAIN_PWR Pin=TP8-1
+Added Net: Name=CTRL_MAIN_PWR
+Added Pin To Net: NetName=CTRL_SUB_PWR Pin=IC1-37
+Added Pin To Net: NetName=CTRL_SUB_PWR Pin=IC3-3
+Added Pin To Net: NetName=CTRL_SUB_PWR Pin=R21-1
+Added Pin To Net: NetName=CTRL_SUB_PWR Pin=TP7-1
+Added Net: Name=CTRL_SUB_PWR
+Added Member To Class: ClassName=MSW_V2 Member=Component C18 10uF
+Added Member To Class: ClassName=MSW_V2 Member=Component J3 JP2
+Added Member To Class: ClassName=MSW_V2 Member=Component TP16 TP

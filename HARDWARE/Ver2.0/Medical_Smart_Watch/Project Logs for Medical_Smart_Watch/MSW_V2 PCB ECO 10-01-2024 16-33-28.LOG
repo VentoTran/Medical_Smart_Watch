@@ -1,0 +1,6 @@
+Change Component Footprint: Designator=LED2 Old Footprint=LED-1206-Blue New Footprint=LED-0805-Blue
+Added Member To Class: ClassName=MSW_V2 Member=Component R22 10k
+Added Member To Class: ClassName=MSW_V2 Member=Component R23 2k
+Added Member To Class: ClassName=MSW_V2 Member=Component R24 2k
+Added Member To Class: ClassName=MSW_V2 Member=Component R26 150k
+Added Member To Class: ClassName=MSW_V2 Member=Component R27 150k

@@ -1,0 +1,22 @@
+Change Component Designator: OldDesignator=TP3 NewDesignator=TP5
+Change Component Designator: OldDesignator=TP4 NewDesignator=TP6
+Change Component Designator: OldDesignator=TP5 NewDesignator=TP7
+Change Component Designator: OldDesignator=TP6 NewDesignator=TP8
+Change Component Designator: OldDesignator=TP7 NewDesignator=TP9
+Change Component Designator: OldDesignator=TP8 NewDesignator=TP10
+Change Component Designator: OldDesignator=TP9 NewDesignator=TP11
+Change Component Designator: OldDesignator=TP10 NewDesignator=TP12
+Change Component Designator: OldDesignator=TP11 NewDesignator=TP13
+Change Component Designator: OldDesignator=TP12 NewDesignator=TP14
+Change Component Designator: OldDesignator=TP13 NewDesignator=TP15
+Added Component: Designator=TP3(TP_SMD)
+Added Component: Designator=TP4(TP_SMD)
+Added Pin To Net: NetName=NetIC1_30 Pin=IC1-30
+Added Pin To Net: NetName=NetIC1_30 Pin=TP3-1
+Added Net: Name=NetIC1_30
+Added Pin To Net: NetName=NetIC1_31 Pin=IC1-31
+Added Pin To Net: NetName=NetIC1_31 Pin=TP4-1
+Added Net: Name=NetIC1_31
+Added Member To Class: ClassName=MSW_V2 Member=Component TP14 TP
+Added Member To Class: ClassName=MSW_V2 Member=Component TP15 TP
+Added Room: Name=MSW_V2
