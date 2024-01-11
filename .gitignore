@@ -60,7 +60,7 @@ dkms.conf
 *.Dat
 *.LOG
 *__Previews/
-
+*.OutJob
 
 
 <<<<<<< HEAD
